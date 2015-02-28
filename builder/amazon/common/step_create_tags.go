@@ -28,7 +28,22 @@ func (s *StepCreateTags) Run(state multistep.StateBag) multistep.StepAction {
 			}
 
 			regionconn := ec2.New(ec2conn.Auth, aws.Regions[region])
-			_, err := regionconn.CreateTags([]string{ami}, ec2Tags)
+
+			imagesResp, err := ec2conn.Images([]string{ami}, nil)
+			if err != nil {
+				err := fmt.Errorf("Error searching for AMI (%s) in %s: %s", ami, region, err)
+				state.Put("error", err)
+				ui.Error(err.Error())
+				return multistep.ActionHalt
+			}
+			image := &imagesResp.Images[0]
+
+			resourcesToTag := []string{ami}
+			for _, blockDevice := range image.BlockDevices {
+				resourcesToTag = append(resourcesToTag, blockDevice.SnapshotId)
+			}
+
+			_, err = regionconn.CreateTags(resourcesToTag, ec2Tags)
 			if err != nil {
 				err := fmt.Errorf("Error adding tags to AMI (%s): %s", ami, err)
 				state.Put("error", err)
